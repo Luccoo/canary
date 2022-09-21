@@ -573,6 +573,8 @@ enum item_t : uint16_t {
 	ITEM_DEPOT_XVI = 22812,
 	ITEM_DEPOT_XVII = 22813,
 	ITEM_DEPOT_XVIII = 31915,
+	ITEM_DEPOT_XIX = 39723,
+	ITEM_DEPOT_XX = 39724,
 
 	ITEM_FIREFIELD_PVP_FULL = 2118,
 	ITEM_FIREFIELD_PVP_MEDIUM = 2119,
@@ -685,7 +687,10 @@ enum item_t : uint16_t {
 	ITEM_DEATH_RING_ACTIVATED = 6300,
 
 	ITEM_PRISMATIC_RING = 16114,
-	ITEM_PRISMATIC_RING_ACTIVATED = 16264
+	ITEM_PRISMATIC_RING_ACTIVATED = 16264,
+
+	ITEM_FORGE_SLIVER = 37109,
+	ITEM_FORGE_CORE = 37110
 };
 
 // A map which contains items that, when on creating, should be transformed to the default type.
@@ -744,8 +749,8 @@ enum PlayerFlags : uint64_t {
 };
 
 enum PlayerCustomFlags : uint64_t {
-  PlayerCustomFlag_CanMapClickTeleport = 1 << 0,
-  PlayerCustomFlag_IgnoredByNpcs = 1 << 1
+	PlayerCustomFlag_CanMapClickTeleport = 1 << 0,
+	PlayerCustomFlag_IgnoredByNpcs = 1 << 1
 };
 
 enum Blessings_t : uint8_t {

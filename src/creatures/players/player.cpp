@@ -1002,17 +1002,6 @@ bool Player::isNearDepotBox() const
 	return false;
 }
 
-DepotChest* Player::getDepotBox()
-{
-	DepotChest* depotBoxs = new DepotChest(ITEM_DEPOT);
-	depotBoxs->incrementReferenceCounter();
-	depotBoxs->setMaxDepotItems(getMaxDepotItems());
-	for (uint32_t index = 1; index <= 18; ++index) {
-		depotBoxs->internalAddThing(getDepotChest(19 - index, true));
-	}
-	return depotBoxs;
-}
-
 DepotChest* Player::getDepotChest(uint32_t depotId, bool autoCreate)
 {
 	auto it = depotChests.find(depotId);
@@ -1027,9 +1016,12 @@ DepotChest* Player::getDepotChest(uint32_t depotId, bool autoCreate)
 	DepotChest* depotChest;
 	if (depotId > 0 && depotId < 18) {
 		depotChest = new DepotChest(ITEM_DEPOT_NULL + depotId);
-	}
-	else {
+	} else if (depotId  == 18) {
 		depotChest = new DepotChest(ITEM_DEPOT_XVIII);
+	} else if (depotId  == 19) {
+		depotChest = new DepotChest(ITEM_DEPOT_XIX);
+	} else {
+		depotChest = new DepotChest(ITEM_DEPOT_XX);
 	}
 
 	depotChest->incrementReferenceCounter();
@@ -1986,6 +1978,8 @@ void Player::onThink(uint32_t interval)
 		MessageBufferTicks = 0;
 		addMessageBuffer();
 	}
+
+	triggerMomentum(); // momentum (cooldown resets)
 
 	if (!getTile()->hasFlag(TILESTATE_NOLOGOUT) && !isAccessPlayer() && !isExerciseTraining()) {
 		idleTime += interval;
@@ -3731,35 +3725,19 @@ std::map<uint32_t, uint32_t>& Player::getAllItemTypeCount(std::map<uint32_t, uin
 	return countMap;
 }
 
-std::map<uint16_t, uint16_t> Player::getInventoryItemsId() const
+ItemsTierCountList Player::getInventoryItemsId() const
 {
-	std::map<uint16_t, uint16_t> itemMap;
+	ItemsTierCountList itemMap;
 	for (int32_t i = CONST_SLOT_FIRST; i <= CONST_SLOT_LAST; i++) {
 		Item* item = inventory[i];
 		if (!item) {
 			continue;
 		}
 
-		auto rootSearch = itemMap.find(item->getID());
-		if (rootSearch != itemMap.end()) {
-			itemMap[item->getID()] = itemMap[item->getID()] + static_cast<uint16_t>(Item::countByType(item, -1));
-		}
-		else
-		{
-			itemMap.emplace(item->getID(), static_cast<uint16_t>(Item::countByType(item, -1)));
-		}
-
+		(itemMap[item->getID()])[item->getTier()] += Item::countByType(item, -1);
 		if (Container* container = item->getContainer()) {
 			for (ContainerIterator it = container->iterator(); it.hasNext(); it.advance()) {
-				auto containerSearch = itemMap.find((*it)->getID());
-				if (containerSearch != itemMap.end()) {
-					itemMap[(*it)->getID()] = itemMap[(*it)->getID()] + static_cast<uint16_t>(Item::countByType(*it, -1));
-				}
-				else
-				{
-					itemMap.emplace((*it)->getID(), Item::countByType(*it, -1));
-				}
-				itemMap.emplace((*it)->getID(), Item::countByType(*it, -1));
+				(itemMap[(*it)->getID()])[(*it)->getTier()] += Item::countByType(*it, -1);
 			}
 		}
 	}
@@ -5784,7 +5762,7 @@ void Player::stowItem(Item* item, uint32_t count, bool allItems) {
 		itemDict = item->getContainer()->getStowableItems();
 		for (Item* containerItem : item->getContainer()->getItems(true)) {
 			uint32_t depotChest = g_configManager().getNumber(DEPOTCHEST);
-			bool validDepot = depotChest > 0 && depotChest < 19;
+			bool validDepot = depotChest > 0 && depotChest < 21;
 			if (g_configManager().getBoolean(STASH_MOVING) && containerItem && !containerItem->isStackable() && validDepot) {
 				g_game().internalMoveItem(containerItem->getParent(), getDepotChest(depotChest, true), INDEX_WHEREEVER, containerItem, containerItem->getItemCount(), nullptr);
 				movedItems++;
@@ -5928,6 +5906,32 @@ bool Player::isCreatureUnlockedOnTaskHunting(const MonsterType* mtype) const {
 	return getBestiaryKillCount(mtype->info.raceid) >= mtype->info.bestiaryToUnlock;
 }
 
+void Player::triggerMomentum() {
+	if (getInventoryItem(CONST_SLOT_HEAD) != nullptr) {
+		double_t chance = getInventoryItem(CONST_SLOT_HEAD)->getMomentumChance();
+		if (getZone() != ZONE_PROTECTION && hasCondition(CONDITION_INFIGHT) && ((OTSYS_TIME()/1000) % 2) == 0 && chance > 0 && uniform_random(1, 100) <= chance) {
+			bool triggered = false;
+			auto it = conditions.begin();
+			while (it != conditions.end()) {
+				ConditionType_t type = (*it)->getType();
+				uint32_t spellId = (*it)->getSubId();
+				int32_t ticks = (*it)->getTicks();
+				int32_t newTicks = (ticks <= 2000) ? 0 : ticks - 2000;
+				triggered = true;
+				if (type == CONDITION_SPELLCOOLDOWN || (type == CONDITION_SPELLGROUPCOOLDOWN && spellId > SPELLGROUP_SUPPORT)) {
+					(*it)->setTicks(newTicks);
+					type == CONDITION_SPELLGROUPCOOLDOWN ? sendSpellGroupCooldown(static_cast<SpellGroup_t>(spellId), newTicks) : sendSpellCooldown(static_cast<uint8_t>(spellId), newTicks);
+				}
+				++it;
+			}
+			if (triggered) {
+				g_game().addMagicEffect(getPosition(), CONST_ME_HOURGLASS);
+				sendTextMessage(MESSAGE_ATTENTION, "Momentum was triggered.");
+			}
+		}
+	}
+}
+
 /*******************************************************************************
  * Depot search system
  ******************************************************************************/
@@ -6019,10 +6023,14 @@ void Player::requestDepotSearchItem(uint16_t itemId, uint8_t tier)
 			}
 
 			if (c->isInbox()) {
-				inboxItems.push_back(item);
+				if (inboxItems.size() < 255) {
+					inboxItems.push_back(item);
+				}
 				inboxCount += Item::countByType(item, -1);
 			} else {
-				depotItems.push_back(item);
+				if (depotItems.size() < 255) {
+					depotItems.push_back(item);
+				}
 				depotCount += Item::countByType(item, -1);
 			}
 		}
