@@ -1745,7 +1745,7 @@ ReturnValue Game::internalPlayerAddItem(Player* player, Item* item, bool dropOnM
 	return ret;
 }
 
-Item* Game::findItemOfType(Cylinder* cylinder, uint16_t itemId, bool depthSearch /*= true*/, int32_t subType /*= -1*/, bool hasTier /*= false*/, uint8_t tier /*= 0*/) const
+Item* Game::findItemOfType(const Cylinder* cylinder, uint16_t itemId, bool depthSearch /*= true*/, int32_t subType /*= -1*/, bool hasTier /*= false*/, uint8_t tier /*= 0*/) const
 {
 	if (cylinder == nullptr) {
 		return nullptr;
@@ -4095,10 +4095,10 @@ void Game::internalCloseTrade(Player* player)
 	}
 }
 
-void Game::playerBuyItem(uint32_t playerId, uint16_t itemId, uint8_t count, uint8_t amount,
+void Game::playerBuyItem(uint32_t playerId, uint16_t itemId, uint8_t count, uint16_t amount,
                               bool ignoreCap/* = false*/, bool inBackpacks/* = false*/)
 {
-	if (amount == 0 || amount > 100) {
+	if (amount == 0) {
 		return;
 	}
 
@@ -4114,6 +4114,10 @@ void Game::playerBuyItem(uint32_t playerId, uint16_t itemId, uint8_t count, uint
 
 	const ItemType& it = Item::items[itemId];
 	if (it.id == 0) {
+		return;
+	}
+
+	if ((it.stackable && amount > 10000) || (!it.stackable && amount > 100)) {
 		return;
 	}
 
@@ -4131,9 +4135,9 @@ void Game::playerBuyItem(uint32_t playerId, uint16_t itemId, uint8_t count, uint
 	player->updateNpcExhausted();
 }
 
-void Game::playerSellItem(uint32_t playerId, uint16_t itemId, uint8_t count, uint8_t amount, bool ignoreEquipped)
+void Game::playerSellItem(uint32_t playerId, uint16_t itemId, uint8_t count, uint16_t amount, bool ignoreEquipped)
 {
-	if (amount == 0 || amount > 100) {
+	if (amount == 0) {
 		return;
 	}
 
@@ -4149,6 +4153,10 @@ void Game::playerSellItem(uint32_t playerId, uint16_t itemId, uint8_t count, uin
 
 	const ItemType& it = Item::items[itemId];
 	if (it.id == 0) {
+		return;
+	}
+
+	if ((it.stackable && amount > 10000) || (!it.stackable && amount > 100)) {
 		return;
 	}
 
@@ -6615,6 +6623,10 @@ void Game::ReleaseCreature(Creature* creature)
 
 void Game::ReleaseItem(Item* item)
 {
+	if (!item) {
+		return;
+	}
+
 	ToReleaseItems.push_back(item);
 }
 
@@ -7557,6 +7569,10 @@ void Game::playerCancelMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 			while (tmpAmount > 0) {
 				int32_t stackCount = std::min<int32_t>(100, tmpAmount);
 				Item* item = Item::CreateItem(it.id, stackCount);
+				if (offer.tier > 0) {
+					item->setIntAttr(ITEM_ATTRIBUTE_TIER, offer.tier);
+				}
+
 				if (internalAddItem(player->getInbox(), item, INDEX_WHEREEVER, FLAG_NOLIMIT) != RETURNVALUE_NOERROR) {
 					delete item;
 					break;
@@ -7574,6 +7590,10 @@ void Game::playerCancelMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 
 			for (uint16_t i = 0; i < offer.amount; ++i) {
 				Item* item = Item::CreateItem(it.id, subType);
+				if (offer.tier > 0) {
+					item->setIntAttr(ITEM_ATTRIBUTE_TIER, offer.tier);
+				}
+
 				if (internalAddItem(player->getInbox(), item, INDEX_WHEREEVER, FLAG_NOLIMIT) != RETURNVALUE_NOERROR) {
 					delete item;
 					break;
@@ -7725,6 +7745,10 @@ void Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 			while (tmpAmount > 0) {
 				uint16_t stackCount = std::min<uint16_t>(100, tmpAmount);
 				Item* item = Item::CreateItem(it.id, stackCount);
+				if (offer.tier > 0) {
+					item->setIntAttr(ITEM_ATTRIBUTE_TIER, offer.tier);
+				}
+
 				if (internalAddItem(buyerPlayer->getInbox(), item, INDEX_WHEREEVER, FLAG_NOLIMIT) != RETURNVALUE_NOERROR) {
 					delete item;
 					break;
@@ -7744,6 +7768,10 @@ void Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 
 			for (uint16_t i = 0; i < amount; ++i) {
 				Item* item = Item::CreateItem(it.id, subType);
+				if (offer.tier > 0) {
+					item->setIntAttr(ITEM_ATTRIBUTE_TIER, offer.tier);
+				}
+
 				if (internalAddItem(buyerPlayer->getInbox(), item, INDEX_WHEREEVER, FLAG_NOLIMIT) != RETURNVALUE_NOERROR) {
 					delete item;
 					break;
@@ -7798,6 +7826,10 @@ void Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 			while (tmpAmount > 0) {
 				uint16_t stackCount = std::min<uint16_t>(100, tmpAmount);
 				Item* item = Item::CreateItem(it.id, stackCount);
+				if (offer.tier > 0) {
+					item->setIntAttr(ITEM_ATTRIBUTE_TIER, offer.tier);
+				}
+
 				if (internalAddItem(player->getInbox(), item, INDEX_WHEREEVER, FLAG_NOLIMIT) != RETURNVALUE_NOERROR) {
 					delete item;
 					break;
@@ -7815,6 +7847,10 @@ void Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 
 			for (uint16_t i = 0; i < amount; ++i) {
 				Item* item = Item::CreateItem(it.id, subType);
+				if (offer.tier > 0) {
+					item->setIntAttr(ITEM_ATTRIBUTE_TIER, offer.tier);
+				}
+
 				if (internalAddItem(player->getInbox(), item, INDEX_WHEREEVER, FLAG_NOLIMIT) != RETURNVALUE_NOERROR) {
 					delete item;
 					break;
@@ -8292,7 +8328,7 @@ void Game::parsePlayerExtendedOpcode(uint32_t playerId, uint8_t opcode, const st
 	}
 }
 
-std::vector<Item*> Game::getMarketItemList(uint16_t wareId, uint16_t sufficientCount, uint8_t tier, DepotLocker* depotLocker)
+std::vector<Item*> Game::getMarketItemList(uint16_t wareId, uint16_t sufficientCount, uint8_t tier, DepotLocker* depotLocker) const
 {
 	std::vector<Item*> itemVector;
 	itemVector.reserve(std::max<size_t>(32, depotLocker->size()));

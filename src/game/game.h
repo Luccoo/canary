@@ -208,7 +208,7 @@ class Game
                                           bool dropOnMap = true,
                                           Slots_t slot = CONST_SLOT_WHEREEVER);
 
-		Item* findItemOfType(Cylinder* cylinder, uint16_t itemId,
+		Item* findItemOfType(const Cylinder* cylinder, uint16_t itemId,
                              bool depthSearch = true, int32_t subType = -1, bool hasTier = false, uint8_t tier = 0) const;
 
 		void createLuaItemsOnMap();
@@ -318,10 +318,10 @@ class Game
 								uint32_t tradePlayerId, uint16_t itemId);
 		void playerAcceptTrade(uint32_t playerId);
 		void playerLookInTrade(uint32_t playerId, bool lookAtCounterOffer, uint8_t index);
-		void playerBuyItem(uint32_t playerId, uint16_t itemId, uint8_t count, uint8_t amount,
+		void playerBuyItem(uint32_t playerId, uint16_t itemId, uint8_t count, uint16_t amount,
 								bool ignoreCap = false, bool inBackpacks = false);
 		void playerSellItem(uint32_t playerId, uint16_t itemId, uint8_t count,
-								uint8_t amount, bool ignoreEquipped = false);
+								uint16_t amount, bool ignoreEquipped = false);
 		void playerCloseShop(uint32_t playerId);
 		void playerLookInShop(uint32_t playerId, uint16_t itemId, uint8_t count);
 		void playerCloseTrade(uint32_t playerId);
@@ -390,7 +390,7 @@ class Game
 
 		void parsePlayerExtendedOpcode(uint32_t playerId, uint8_t opcode, const std::string& buffer);
 
-		std::vector<Item*> getMarketItemList(uint16_t wareId, uint16_t sufficientCount, uint8_t tier, DepotLocker* depotLocker);
+		std::vector<Item*> getMarketItemList(uint16_t wareId, uint16_t sufficientCount, uint8_t tier, DepotLocker* depotLocker) const;
 
 		static void updatePremium(account::Account& account);
 

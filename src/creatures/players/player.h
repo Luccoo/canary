@@ -633,7 +633,6 @@ class Player final : public Creature, public Cylinder
 		void getRewardList(std::vector<uint32_t>& rewards);
 		RewardChest* getRewardChest();
 
-		DepotChest* getDepotBox();
 		DepotChest* getDepotChest(uint32_t depotId, bool autoCreate);
 		DepotLocker* getDepotLocker(uint32_t depotId);
 		void onReceiveMail() const;
@@ -1261,11 +1260,6 @@ class Player final : public Creature, public Cylinder
 		void sendTextWindow(Item* item, uint16_t maxlen, bool canWrite) const {
 			if (client) {
 				client->sendTextWindow(windowTextId, item, maxlen, canWrite);
-			}
-		}
-		void sendTextWindow(uint32_t itemId, const std::string& text) const {
-			if (client) {
-				client->sendTextWindow(windowTextId, itemId, text);
 			}
 		}
 		void sendToChannel(const Creature* creature, SpeakClasses type,

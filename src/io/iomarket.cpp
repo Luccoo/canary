@@ -130,7 +130,7 @@ void IOMarket::processExpiredOffers(DBResult_ptr result, bool)
 
 		const uint32_t playerId = result->getNumber<uint32_t>("player_id");
 		const uint16_t amount = result->getNumber<uint16_t>("amount");
-		const uint8_t tier = static_cast<uint8_t>(result->getNumber<uint16_t>("tier"));
+		const auto tier = static_cast<uint8_t>(result->getNumber<uint16_t>("tier"));
 		if (result->getNumber<uint16_t>("sale") == 1) {
 			const ItemType& itemType = Item::items[result->getNumber<uint16_t>("itemtype")];
 			if (itemType.id == 0) {
@@ -234,7 +234,7 @@ MarketOfferEx IOMarket::getOfferByCounter(uint32_t timestamp, uint16_t counter)
 	const int32_t created = timestamp - g_configManager().getNumber(MARKET_OFFER_DURATION);
 
 	std::ostringstream query;
-	query << "SELECT `id`, `sale`, `itemtype`, `amount`, `created`, `price`, `player_id`, `anonymous`, (SELECT `name` FROM `players` WHERE `id` = `player_id`) AS `player_name` FROM `market_offers` WHERE `created` = " << created << " AND (`id` & 65535) = " << counter << " LIMIT 1";
+	query << "SELECT `id`, `sale`, `itemtype`, `amount`, `created`, `price`, `player_id`, `anonymous`, `tier`, (SELECT `name` FROM `players` WHERE `id` = `player_id`) AS `player_name` FROM `market_offers` WHERE `created` = " << created << " AND (`id` & 65535) = " << counter << " LIMIT 1";
 
 	DBResult_ptr result = Database::getInstance().storeQuery(query.str());
 	if (!result) {
@@ -250,6 +250,7 @@ MarketOfferEx IOMarket::getOfferByCounter(uint32_t timestamp, uint16_t counter)
 	offer.price = result->getNumber<uint32_t>("price");
 	offer.itemId = result->getNumber<uint16_t>("itemtype");
 	offer.playerId = result->getNumber<uint32_t>("player_id");
+	offer.tier = result->getNumber<uint16_t>("tier");
 	if (result->getNumber<uint16_t>("anonymous") == 0) {
 		offer.playerName = result->getString("player_name");
 	} else {
