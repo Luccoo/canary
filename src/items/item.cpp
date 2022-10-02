@@ -773,6 +773,16 @@ Attr_ReadValue Item::readAttr(AttrTypes_t attr, PropStream& propStream)
 			break;
 		}
 
+		case ATTR_TIER: {
+			uint8_t tier;
+			if (!propStream.read<uint8_t>(tier)) {
+				return ATTR_READ_ERROR;
+			}
+
+			setIntAttr(ITEM_ATTRIBUTE_TIER, tier);
+			break;
+		}
+
 		default:
 			return ATTR_READ_ERROR;
 	}
@@ -942,6 +952,11 @@ void Item::serializeAttr(PropWriteStream& propWriteStream) const
 	if (hasAttribute(ITEM_ATTRIBUTE_IMBUEMENT_TYPE)) {
 		propWriteStream.write<uint8_t>(ATTR_IMBUEMENT_TYPE);
 		propWriteStream.writeString(getStrAttr(ITEM_ATTRIBUTE_IMBUEMENT_TYPE));
+	}
+
+	if (hasAttribute(ITEM_ATTRIBUTE_TIER)) {
+		propWriteStream.write<uint8_t>(ATTR_TIER);
+		propWriteStream.write<uint8_t>(getTier());
 	}
 }
 
@@ -1451,6 +1466,10 @@ std::vector<std::pair<std::string, std::string>>
 		} else if (it.slotPosition & SLOTP_TWO_HAND || it.slotPosition & SLOTP_LEFT || it.slotPosition & SLOTP_RIGHT) {
 			descriptions.emplace_back("Body Position", "Hand");
 		}
+
+		if (it.upgradeClassification > 0) {
+			descriptions.emplace_back("Classification", std::to_string(it.upgradeClassification));
+		}
 	}
 	descriptions.shrink_to_fit();
 	return descriptions;
@@ -1500,6 +1519,24 @@ std::string Item::parseImbuementDescription(const Item* item)
 	}
 
 	return s.str();
+}
+
+std::string Item::parseClassificationDescription(const Item* item) {
+	std::ostringstream string;
+	if (item && item->getClassification() > 1) {
+		string << std::endl << "Classification: " << item->getClassification() << " Tier: " << static_cast<uint16_t>(item->getTier());
+		if (item->getTier() != 0) {
+			string << " (";
+			if (Item::items[item->getID()].weaponType != WEAPON_NONE) {
+				string << item->getFatalChance() << "% Onslaught).";
+			} else if (g_game().getObjectCategory(item) == OBJECTCATEGORY_HELMETS) {
+				string << item->getMomentumChance() << "% Momentum).";
+			} else if (g_game().getObjectCategory(item) == OBJECTCATEGORY_ARMORS) {
+				string << item->getDodgeChance() << "% Ruse).";
+			}
+		}
+	}
+	return string.str();
 }
 
 std::string Item::parseShowAttributesDescription(const Item *item, const uint16_t itemId)
@@ -1563,6 +1600,42 @@ std::string Item::parseShowAttributesDescription(const Item *item, const uint16_
 				}
 
 				itemDescription << "magic level " << std::showpos << itemType.abilities->stats[STAT_MAGICPOINTS] << std::noshowpos;
+			}
+
+			// specialized magic levels
+			// magic shield
+			if (itemType.abilities->perfectShotRange) {
+				if (begin) {
+					begin = false;
+					itemDescription << " (";
+				} else {
+					itemDescription << ", ";
+				}
+
+				itemDescription << "perfect shot " << std::showpos << itemType.abilities->perfectShotDamage << std::noshowpos <<
+				" at range " << static_cast<uint16_t>(itemType.abilities->perfectShotRange);
+			}
+
+			if (itemType.abilities->damageReflection) {
+				if (begin) {
+					begin = false;
+					itemDescription << " (";
+				} else {
+					itemDescription << ", ";
+				}
+
+				itemDescription << itemType.abilities->damageReflection << " damage reflection";
+			}
+
+			if (itemType.abilities->cleavePercent) {
+				if (begin) {
+					begin = false;
+					itemDescription << " (";
+				} else {
+					itemDescription << ", ";
+				}
+
+				itemDescription << "Cleave " << itemType.abilities->cleavePercent << "%";
 			}
 
 			int16_t show = itemType.abilities->absorbPercent[0];
@@ -1815,6 +1888,31 @@ std::string Item::getDescription(const ItemType& it, int32_t lookDistance,
 					s << "magic level " << std::showpos << it.abilities->stats[STAT_MAGICPOINTS] << std::noshowpos;
 				}
 
+				// specialized magic levels
+				// magic shield
+				if (it.abilities->perfectShotRange && it.abilities->perfectShotDamage) {
+					if (begin) {
+						begin = false;
+						s << " (";
+					} else {
+						s << ", ";
+					}
+
+					s << "perfect shot " << std::showpos << it.abilities->perfectShotDamage << std::noshowpos <<
+					" at range " << static_cast<uint16_t>(it.abilities->perfectShotRange);
+				}
+
+				if (it.abilities->damageReflection) {
+					if (begin) {
+						begin = false;
+						s << " (";
+					} else {
+						s << ", ";
+					}
+
+					s << it.abilities->damageReflection << " damage reflection";
+				}
+
 				int16_t show = it.abilities->absorbPercent[0];
 				if (show != 0) {
 					for (size_t i = 1; i < COMBAT_COUNT; ++i) {
@@ -2007,6 +2105,17 @@ std::string Item::getDescription(const ItemType& it, int32_t lookDistance,
 					}
 
 					s << "magic level " << std::showpos << it.abilities->stats[STAT_MAGICPOINTS] << std::noshowpos;
+				}
+
+				if (it.abilities->cleavePercent) {
+					if (begin) {
+						begin = false;
+						s << " (";
+					} else {
+						s << ", ";
+					}
+
+					s << "Cleave " << it.abilities->cleavePercent << "%";
 				}
 
 				int16_t show = it.abilities->absorbPercent[0];
@@ -2300,6 +2409,8 @@ std::string Item::getDescription(const ItemType& it, int32_t lookDistance,
 	}
 
 	s << parseImbuementDescription(item);
+
+	s << parseClassificationDescription(item);
 
 	if (lookDistance <= 1) {
 		if (item) {
@@ -2602,6 +2713,10 @@ bool Item::hasMarketAttributes()
 		}
 
 		if (attribute.type == ITEM_ATTRIBUTE_IMBUEMENT_TYPE && !hasImbuements()) {
+			return false;
+		}
+
+		if (attribute.type == ITEM_ATTRIBUTE_TIER && static_cast<uint32_t>(attribute.value.integer) != getTier()) {
 			return false;
 		}
 	}

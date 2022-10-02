@@ -1979,6 +1979,8 @@ void Player::onThink(uint32_t interval)
 		addMessageBuffer();
 	}
 
+	triggerMomentum(); // momentum (cooldown resets)
+
 	if (!getTile()->hasFlag(TILESTATE_NOLOGOUT) && !isAccessPlayer() && !isExerciseTraining()) {
 		idleTime += interval;
 		const int32_t kickAfterMinutes = g_configManager().getNumber(KICK_AFTER_MINUTES);
@@ -2386,6 +2388,8 @@ BlockType_t Player::blockHit(Creature* attacker, CombatType_t combatType, int32_
 	}
 
 	if (damage > 0) {
+		CombatDamage reflectDamage;
+		bool isReflected = false;
 		for (int32_t slot = CONST_SLOT_FIRST; slot <= CONST_SLOT_LAST; ++slot) {
 			if (!isItemAbilityEnabled(static_cast<Slots_t>(slot))) {
 				continue;
@@ -2419,19 +2423,15 @@ BlockType_t Player::blockHit(Creature* attacker, CombatType_t combatType, int32_
 						}
 					}
 				}
+
+				int32_t damageReflection = getDamageReflection();
 				if (attacker) {
-					const int16_t& reflectPercent = it.abilities->reflectPercent[combatTypeToIndex(combatType)];
-					if (reflectPercent != 0) {
-						CombatParams params;
-						params.combatType = combatType;
-						params.impactEffect = CONST_ME_MAGIC_BLUE;
-
-						CombatDamage reflectDamage;
-						reflectDamage.origin = ORIGIN_SPELL;
-						reflectDamage.primary.type = combatType;
-						reflectDamage.primary.value = std::round(-damage * (reflectPercent / 100.));
-
-						Combat::doCombatHealth(this, attacker, reflectDamage, params);
+					if (combatType == COMBAT_PHYSICALDAMAGE) {
+						if (damageReflection != 0) {
+							int32_t calculatedDamage = (attacker->getMaxHealth() * 0.01);
+							damageReflection >= calculatedDamage ? reflectDamage.primary.value = calculatedDamage : reflectDamage.primary.value = damageReflection;
+							isReflected = true;
+						}
 					}
 				}
 			}
@@ -2451,6 +2451,15 @@ BlockType_t Player::blockHit(Creature* attacker, CombatType_t combatType, int32_
 				}
 			}
 
+		}
+
+		if (isReflected) {
+			CombatParams params;
+			params.combatType = COMBAT_PHYSICALDAMAGE;
+			params.impactEffect = CONST_ME_REDSMOKE;
+			reflectDamage.origin = ORIGIN_REFLECT;
+			reflectDamage.primary.type = COMBAT_PHYSICALDAMAGE;
+			Combat::doCombatHealth(this, attacker, reflectDamage, params);
 		}
 
 		if (damage <= 0) {
@@ -3716,35 +3725,19 @@ std::map<uint32_t, uint32_t>& Player::getAllItemTypeCount(std::map<uint32_t, uin
 	return countMap;
 }
 
-std::map<uint16_t, uint16_t> Player::getInventoryItemsId() const
+ItemsTierCountList Player::getInventoryItemsId() const
 {
-	std::map<uint16_t, uint16_t> itemMap;
+	ItemsTierCountList itemMap;
 	for (int32_t i = CONST_SLOT_FIRST; i <= CONST_SLOT_LAST; i++) {
 		Item* item = inventory[i];
 		if (!item) {
 			continue;
 		}
 
-		auto rootSearch = itemMap.find(item->getID());
-		if (rootSearch != itemMap.end()) {
-			itemMap[item->getID()] = itemMap[item->getID()] + static_cast<uint16_t>(Item::countByType(item, -1));
-		}
-		else
-		{
-			itemMap.emplace(item->getID(), static_cast<uint16_t>(Item::countByType(item, -1)));
-		}
-
+		(itemMap[item->getID()])[item->getTier()] += Item::countByType(item, -1);
 		if (Container* container = item->getContainer()) {
 			for (ContainerIterator it = container->iterator(); it.hasNext(); it.advance()) {
-				auto containerSearch = itemMap.find((*it)->getID());
-				if (containerSearch != itemMap.end()) {
-					itemMap[(*it)->getID()] = itemMap[(*it)->getID()] + static_cast<uint16_t>(Item::countByType(*it, -1));
-				}
-				else
-				{
-					itemMap.emplace((*it)->getID(), Item::countByType(*it, -1));
-				}
-				itemMap.emplace((*it)->getID(), Item::countByType(*it, -1));
+				(itemMap[(*it)->getID()])[(*it)->getTier()] += Item::countByType(*it, -1);
 			}
 		}
 	}
@@ -5913,6 +5906,32 @@ bool Player::isCreatureUnlockedOnTaskHunting(const MonsterType* mtype) const {
 	return getBestiaryKillCount(mtype->info.raceid) >= mtype->info.bestiaryToUnlock;
 }
 
+void Player::triggerMomentum() {
+	if (getInventoryItem(CONST_SLOT_HEAD) != nullptr) {
+		double_t chance = getInventoryItem(CONST_SLOT_HEAD)->getMomentumChance();
+		if (getZone() != ZONE_PROTECTION && hasCondition(CONDITION_INFIGHT) && ((OTSYS_TIME()/1000) % 2) == 0 && chance > 0 && uniform_random(1, 100) <= chance) {
+			bool triggered = false;
+			auto it = conditions.begin();
+			while (it != conditions.end()) {
+				ConditionType_t type = (*it)->getType();
+				uint32_t spellId = (*it)->getSubId();
+				int32_t ticks = (*it)->getTicks();
+				int32_t newTicks = (ticks <= 2000) ? 0 : ticks - 2000;
+				triggered = true;
+				if (type == CONDITION_SPELLCOOLDOWN || (type == CONDITION_SPELLGROUPCOOLDOWN && spellId > SPELLGROUP_SUPPORT)) {
+					(*it)->setTicks(newTicks);
+					type == CONDITION_SPELLGROUPCOOLDOWN ? sendSpellGroupCooldown(static_cast<SpellGroup_t>(spellId), newTicks) : sendSpellCooldown(static_cast<uint8_t>(spellId), newTicks);
+				}
+				++it;
+			}
+			if (triggered) {
+				g_game().addMagicEffect(getPosition(), CONST_ME_HOURGLASS);
+				sendTextMessage(MESSAGE_ATTENTION, "Momentum was triggered.");
+			}
+		}
+	}
+}
+
 /*******************************************************************************
  * Depot search system
  ******************************************************************************/
@@ -6117,6 +6136,25 @@ Item* Player::getItemFromDepotSearch(uint16_t itemId, const Position& pos)
 	}
 
 	return nullptr;
+}
+
+int32_t Player::getDamageReflection() {
+	int32_t result = 0;
+	for (int32_t i = CONST_SLOT_FIRST; i <= CONST_SLOT_LAST; ++i) {
+		Item* item = inventory[i];
+		if (!item || !isItemAbilityEnabled(static_cast<Slots_t>(i))) {
+			continue;
+		}
+
+		const ItemType& it = Item::items[item->getID()];
+		if (it.abilities) {
+			int32_t reflect = it.abilities->damageReflection;
+			if (reflect != 0) {
+				result += reflect;
+			}
+		}
+	}
+	return result;
 }
 
 /*******************************************************************************
